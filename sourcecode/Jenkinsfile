@@ -1,0 +1,76 @@
+pipeline{
+    agent{
+        docker{
+            image 'armdevu/maven-jdk-docker-ansible-agent:v3'
+        }
+    }
+    environment{
+        WORKSPACE = "${env.WORKSPACE}"
+        ANSIBLE_PLAY_PATH = "${WORKSPACE}/springwebplaybook"
+        ANSIBLE_ROLES_PATH = "${WORKSPACE}/springwebrole"
+        AKS_RESOURCE_GROUP = "aks-resource-group"
+        AKS_CLUSTER_NAME = "argocd-k8s"   
+        AZURE_SUBSCRIPTION = "f9b83507-afa0-453c-ae40-14ac3b37f867"
+        AZURE_TENANT_ID ="82c3c442-ef71-4b35-987f-e829154b44aa"
+    }
+    stages {
+        stage('Cleanup workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage("Checkout ansible playbook repo") {
+            steps{
+                echo 'Checking out ansible playbook for the deployment'
+                dir("${ANSIBLE_PLAY_PATH}") {
+                    git branch: 'master', url: 'https://github.com/anuja2015/CICDwithAnsibleArgo-playbook.git'
+                }
+            }
+        }
+    
+        stage("Checkout ansible role repo") {
+            steps {
+                echo 'Checking out ansible role for the deployment'
+                dir("${ANSIBLE_ROLES_PATH}") {
+                    git branch: 'master', url: 'https://github.com/anuja2015/CICDwithAnsibleArgo-Configrole.git'
+                }
+            }
+        } 
+         stage('Setup Ansible Config') {
+            steps {
+                script {
+                    def ansibleCfgContent = """
+                    [defaults]
+                    roles_path = "${ANSIBLE_ROLES_PATH}"
+                    
+                    [inventory]
+                    enable_plugins =  host_list, virtualbox, yaml, constructed, script, ini, azure_rm
+                    """
+
+                    writeFile file: 'ansible.cfg', text: ansibleCfgContent
+                }
+            }
+        }
+        stage("Get AKS credentials") {
+            steps {
+                 withCredentials([usernamePassword(credentialsId: 'AZURE_CREDENTIALS', usernameVariable: 'AZURE_CLIENT_ID', passwordVariable: 'AZURE_CLIENT_SECRET')]) {
+                    sh """
+                        az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}
+                        az account set --subscription ${AZURE_SUBSCRIPTION}
+                        az aks get-credentials --resource-group ${AKS_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME}
+                    """
+                }
+            }        
+        }
+        stage("Deploy") {
+            steps {
+                    sh '''
+                        ansible-playbook -i ${ANSIBLE_PLAY_PATH}/aks-azure_rm.yaml ${ANSIBLE_PLAY_PATH}/deploy.yaml
+                    '''
+                
+            }
+        }
+    }
+    
+}
