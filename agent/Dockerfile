@@ -7,10 +7,12 @@ ENV MAVEN_HOME=/opt/maven
 ENV PATH=$MAVEN_HOME/bin:$PATH
 
 # Install Ansible and AZURE CLI
-RUN  apt update && apt upgrade -y && apt install -y python3  \
+RUN  apt update && apt upgrade -y && apt install -y python3 python3-pip \
     && apt install -y ansible curl \
-    && curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-     
+    && curl -sL https://aka.ms/InstallAzureCLIDeb | bash \
+    && pip install ansible[azure]
+#
+RUN pip install kubernetes
 
 # Install Docker CLI and Maven
 RUN apt update && apt install -y \
